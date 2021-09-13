@@ -3,18 +3,23 @@ import config
 import tweepy
 import requests
 import json
+import time
 
 
-ArticlesUrl = 'https://note.com/api/v2/creators/urouro_tk/contents?kind=note&page=1'
-r = requests.get(ArticlesUrl)
-res = r.json()
-articleKey = res['data']['contents'][2]['key']
-scrapingUrl = 'https://note.com/urouro_tk/n/{}'.format(articleKey)
+def getArticleKey():
+    ArticlesUrl = 'https://note.com/api/v2/creators/urouro_tk/contents?kind=note&page=1'
+    r = requests.get(ArticlesUrl)
+    res = r.json()
+    articleKey: str = res['data']['contents'][0]['key']
+    return articleKey
 
-article = Article(scrapingUrl)
-article.download()
-article.parse()
-articleLength = len(article.text)
+
+def getArticle():
+    scrapingUrl: str = f'https://note.com/urouro_tk/n/{getArticleKey()}'
+    article = Article(scrapingUrl)
+    article.download()
+    article.parse()
+    return article
 
 
 def time2Read(length):
@@ -25,7 +30,42 @@ def time2Read(length):
         return int(length/LETTERS_READ_IN_A_MIN)
 
 
-def makeTweets(article):
+file = "elems_text.txt"
+
+
+def is_not_changed(old_elem, new_elem):
+    return old_elem == new_elem
+
+
+def set_old_elems():
+    try:
+        f = open(file)
+        old_elems = f.read()
+        print(f'{"old_elem":10} : {old_elems}')
+    except:
+        old_elems = ''
+    return old_elems
+
+
+def set_new_elems():
+    new_elems = getArticleKey()
+    print(f'{"new_elem":10} : {new_elems}')
+    return new_elems
+
+
+def is_newArticle_posted(old_elem, new_elem):
+    if not is_not_changed(old_elems, new_elems):
+        f = open(file, 'w')
+        f.writelines(new_elems)
+        f.close()
+        print("Change is detected!!")
+        return True
+    else:
+        print("not changed...")
+        return False
+
+
+def makeTweets(article, articleLength):
     tw: list = []
     oneTweet: str = ''
     sentencesInATweet: list = []
@@ -61,7 +101,7 @@ def makeTweets(article):
     return tw
 
 
-def tweet(contents):
+def tweet(contents, articleLength):
     # 取得した各種キーを格納-----------------------------------------------------
     consumer_key: str = config.API_KEY
     consumer_secret: str = config.API_KEY_SECRET
@@ -86,10 +126,16 @@ def tweet(contents):
 
 
 if __name__ == '__main__':
-    tweets: list = makeTweets(article)
-
-    # デバッグ用
-    for i in tweets:
-        print(i)
-        print(len(i))
-        print('---')
+    try:
+        while True:
+            print("="*100)
+            new_elems = set_new_elems()
+            old_elems = set_old_elems()
+            if is_newArticle_posted(old_elems, new_elems):
+                article = getArticle()
+                articleLength = len(article.text)
+                tweets: list = makeTweets(article, articleLength)
+                tweet(tweets, articleLength)
+            time.sleep(40)
+    except KeyboardInterrupt:
+        print("Interrupted by Ctrl + C")
