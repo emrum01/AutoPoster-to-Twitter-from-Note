@@ -5,6 +5,8 @@ import requests
 import json
 import time
 
+isNote = True
+
 
 def getArticleKey():
     ArticlesUrl = 'https://note.com/api/v2/creators/urouro_tk/contents?kind=note&page=1'
@@ -24,6 +26,18 @@ def getArticle():
 
 def getNotionContent():
     novelUrl = 'https://api.notion.com/v1/blocks/45bcd275b4b444d8b22d2ccaed91b254/children'
+
+
+def getArticleLength(article):
+    return len(article)
+
+
+def getArticleLengthForTweet(article):  # 一の位で四捨五入
+    textLength = getArticleLength(article)
+    if(float(textLength/10) - float(int(textLength/10))) >= 0.5:
+        return (int(textLength/10)+1)*10
+    else:
+        return int(textLength/10)*10
 
 
 def time2Read(length):
@@ -69,7 +83,7 @@ def is_newArticle_posted(old_elem, new_elem):
         return False
 
 
-def makeTweets(article, articleLength):
+def makeTweets(article):
     tw: list = []
     oneTweet: str = ''
     sentencesInATweet: list = []
@@ -81,7 +95,7 @@ def makeTweets(article, articleLength):
 
     # 最初のツイートを作成
     tw.append(
-        f'胡乱なるウーロン茶\n@urouro_tk\nで公開しているショートショートの１つ、「{title}」です。\nnoteでも無料公開しています。\n{articleLength}字程ですのでおよそ{time2Read(articleLength)}分程で読めると思います。')
+        f'胡乱なるウーロン茶\n@urouro_tk\nで公開しているショートショートの１つ、「{title}」です。\nnoteでも無料公開しています。\n{getArticleLengthForTweet(article.text)}字程ですのでおよそ{time2Read(getArticleLength(article.text))}分程で読めると思います。')
     articleSentences: list = article.text.splitlines()
     articleSentences = [a for a in articleSentences if a != '']
     numArticleSentence: int = len(articleSentences)
@@ -149,8 +163,8 @@ if __name__ == '__main__':
     # except KeyboardInterrupt:
     #     print("Interrupted by Ctrl + C")
     article = getArticle()
-    articleLength = len(article.text)
-    tweets: list = makeTweets(article, articleLength)
+    tweets: list = makeTweets(article)
+    print(getArticleLengthForTweet(article.text))
     for i in tweets:
         print(i)
         print(len(i))
