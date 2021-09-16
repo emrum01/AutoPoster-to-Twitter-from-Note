@@ -4,6 +4,7 @@ import config
 import tweepy
 import requests
 import json
+from itertools import chain
 import time
 
 isNote = True
@@ -206,16 +207,36 @@ def makeTweets(article):
     # 最初のツイートを作成
     tw.append(
         f'胡乱なるウーロン茶\n@urouro_tk\nで公開しているショートショートの１つ、「{title}」です。\nnoteでも無料公開しています。\n{getArticleLengthForTweet(text)}字程ですのでおよそ{time2Read(getArticleLength(text))}分程で読めると思います。')
-    articleSentences: list = article['text'].splitlines()
-    articleSentences = [a for a in articleSentences if a != '']
-    numArticleSentence: int = len(articleSentences)
+    articleRows: list = text.splitlines()
+
+    rowslen = len(articleRows)
+    for i in range(rowslen):
+        # 改行後の文が140字を超える場合は
+        if len(articleRows[i]) > 140 - 2:
+            l = articleRows[i].split('。')
+            l = [i+'。'for i in l if i != '']
+            # if i == 0:
+            #     articleRows = l + articleRows[i+1:]
+            # elif 0 < i and i < rowslen-1:
+            #     articleRows = articleRows[:i-1] + l + articleRows[i+1:]
+            # elif i == rowslen-1:
+            #     articleRows = articleRows[:i-1] + l
+            articleRows[i] = l
+        else:
+            articleRows[i] = ''.join(list(articleRows[i]))
+    articleRows = [a for a in articleRows if a != '']
+    def flatten(x): return [z for y in x for z in (
+        flatten(y) if hasattr(y, '__iter__') and not isinstance(y, str) else (y,))]
+    articleRows = flatten(articleRows)
+    numArticleSentence: int = len(articleRows)
 
     # 本文1ツイート分の内容を作成
+    # i = 0 # 型エラーが出たのでキャスト&初期化
     while i < numArticleSentence:
         i = start
         removeCount: int = 0
         while len(oneTweet) < 140 and i < numArticleSentence:
-            oneTweet += articleSentences[i]+'\n'
+            oneTweet += articleRows[i]+'\n'
             i += 1
 
         sentencesInATweet = oneTweet.splitlines()
@@ -271,7 +292,11 @@ if __name__ == '__main__':
         print('notion id is successfully updated')
         # 小説を取得
         novel: object = getNovelFromNotion(notion_new_id)
-        print(makeTweets(novel))
+        tw = makeTweets(novel)
+        for i in tw:
+            print(i)
+            print(len(i))
+            print('---')
 
     # note のみが変更された場合
     elif notion_new_id == old_ids['notion'] and note_new_id != old_ids['note']:
@@ -279,6 +304,7 @@ if __name__ == '__main__':
         updateOldID(notionOrNote, note_new_id)
         print('note id is successfully updated')
         novel: object = getArticle()
+        tw = makeTweets(novel)
 
     else:
         print('no change happend')
