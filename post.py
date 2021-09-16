@@ -200,8 +200,7 @@ def makeTweets(article):
     start: int = 0
     i: int = 0
 
-    # スクレイピング結果を整形
-    title: str = article['title'].split('｜')[0]
+    title: str = article['title']
     text: str = article['text']
 
     # 最初のツイートを作成
@@ -220,12 +219,10 @@ def makeTweets(article):
             i += 1
 
         sentencesInATweet = oneTweet.splitlines()
-        print(sentencesInATweet)
         while len(oneTweet) > 140 - 2:
             del sentencesInATweet[-1]
             removeCount += 1
             oneTweet = '\n'.join(sentencesInATweet)+'\n'
-        print(oneTweet)
 
         tw.append(oneTweet)
 
@@ -235,7 +232,7 @@ def makeTweets(article):
 
 
 def tweet(contents, articleLength):
-    # 取得した各種キーを格納-----------------------------------------------------
+    # 取得した各種キーを格納
     consumer_key: str = config.API_KEY
     consumer_secret: str = config.API_KEY_SECRET
     access_token: str = config.ACCESS_TOKEN
@@ -273,14 +270,15 @@ if __name__ == '__main__':
         updateOldID(notionOrNote, notion_new_id)
         print('notion id is successfully updated')
         # 小説を取得
-        novel = getNovelFromNotion(notion_new_id)
+        novel: object = getNovelFromNotion(notion_new_id)
+        print(makeTweets(novel))
 
     # note のみが変更された場合
     elif notion_new_id == old_ids['notion'] and note_new_id != old_ids['note']:
         notionOrNote['note'] = True
         updateOldID(notionOrNote, note_new_id)
         print('note id is successfully updated')
-        novel = getArticle()
+        novel: object = getArticle()
 
     else:
         print('no change happend')
