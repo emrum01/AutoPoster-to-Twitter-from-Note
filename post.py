@@ -1,3 +1,4 @@
+import sys
 from newspaper import Article
 import config
 import tweepy
@@ -8,6 +9,10 @@ import time
 isNote = True
 
 
+# note
+
+
+# 最新のnote記事のidを取得
 def getArticleKey():
     ArticlesUrl = 'https://note.com/api/v2/creators/urouro_tk/contents?kind=note&page=1'
     r = requests.get(ArticlesUrl)
@@ -16,18 +21,158 @@ def getArticleKey():
     return articleKey
 
 
+# 最新のnote記事のタイトルと本文を取得
 def getArticle():
     scrapingUrl: str = f'https://note.com/urouro_tk/n/{getArticleKey()}'
     article = Article(scrapingUrl)
     article.download()
     article.parse()
-    return article
+    title: str = article.title.split('｜')[0]
+    text: str = article.text
+    return {'title': title, 'text': text}
 
 
-def getNotionContent():
-    novelUrl = 'https://api.notion.com/v1/blocks/45bcd275b4b444d8b22d2ccaed91b254/children'
+def getRequestUrl(id):
+    return f'https://api.notion.com/v1/blocks/{id}/children'
 
 
+def shapeNovelContentID(res):
+    return res.json()['results'][-1]['id']
+
+
+def shapeNovelContent(res):
+    return res.json()['results'][0]['toggle']['text'][0]['text']['content']
+
+
+def shapeNovelTitle(res):
+    return res.json()['results'][-1]['toggle']['text'][0]['text']['content']
+
+
+def shapeOldID(res):
+    return res.json()['properties']['ID']['rich_text'][0]['text']['content']
+
+
+def getDBUrl(notionOrNote):  # id保存先の行の選択
+    notion_row_id = config.DB_NOTION_ROW_ID
+    note_row_id = config.DB_NOTE_ROW_ID
+
+    if notionOrNote['notion'] and not notionOrNote['note']:
+        id = notion_row_id
+    elif not notionOrNote['notion'] and notionOrNote['note']:
+        id = note_row_id
+    else:
+        return {
+            'note': f'https://api.notion.com/v1/pages/{note_row_id}',
+            'notion': f'https://api.notion.com/v1/pages/{notion_row_id}'
+        }
+
+    return f'https://api.notion.com/v1/pages/{id}'
+
+
+def getOldIDs(notionOrNote):
+    if not notionOrNote['notion'] and not notionOrNote['note']:
+        requestUrls = getDBUrl(notionOrNote)
+        notion_api_key = config.NOTION_SECRET
+        headers = {"Authorization": f"Bearer {notion_api_key}",
+                   "Content-Type": "application/json",
+                   "Notion-Version": "2021-05-13"}
+        old_ids = {}
+        for k, v in requestUrls.items():
+            res = requests.request(
+                'GET', url=v, headers=headers)
+            old_ids[k] = shapeOldID(res)
+        print(old_ids['notion'])
+        return old_ids
+
+    else:
+        print('some trouble')
+
+
+def isNotionOrNote(notionOrNote):
+    if notionOrNote['notion'] and not notionOrNote['note']:
+        return 'notion_old_id'
+    elif not notionOrNote['notion'] and notionOrNote['note']:
+        return 'note_old_id'
+
+
+def updateOldID(notionOrNote, new_id):
+    notion_api_key = config.NOTION_SECRET
+    headers = {"Authorization": f"Bearer {notion_api_key}",
+               "Content-Type": "application/json",
+               "Notion-Version": "2021-05-13"}
+    data = {
+        "properties": {
+            "Name": {
+                "title": [
+                    {
+                        "type": "text",
+                        "text": {
+                            "content": isNotionOrNote(notionOrNote)
+                        }
+                    }
+                ]
+            },
+            "ID": {
+                "rich_text": [
+                    {
+                        "type": "text",
+                        "text": {
+                            "content": new_id
+                        }
+                    }
+                ]
+            }
+        }
+    }
+
+    return requests.request(
+        'PATCH', url=getDBUrl(notionOrNote), headers=headers, data=json.dumps(data))
+
+
+# notionから本文,タイトル, id取得
+def getBlockFromNotion(block_id):  # notionのapi呼び出しを共通化
+    notion_api_key = config.NOTION_SECRET
+    headers = {"Authorization": f"Bearer {notion_api_key}",
+               "Content-Type": "application/json",
+               "Notion-Version": "2021-05-13"}
+    return requests.request(
+        'GET', url=getRequestUrl(block_id), headers=headers)
+
+
+def getNotionContentID():
+    block_id = config.NOTION_REPOST_BLOCK_ID
+    response = getBlockFromNotion(block_id)
+    content_id = shapeNovelContentID(response)
+    print('new_id'+content_id)
+    return content_id
+
+
+def getNotionContentTitle():
+    block_id = config.NOTION_REPOST_BLOCK_ID
+    response = getBlockFromNotion(block_id)
+    novelTitle = shapeNovelTitle(response)
+    return novelTitle
+
+
+def getNotionContentText(content_id):
+    notion_api_key = config.NOTION_SECRET
+    headers = {"Authorization": f"Bearer {notion_api_key}",
+               "Content-Type": "application/json",
+               "Notion-Version": "2021-05-13"}
+    resContent = requests.request(
+        'GET', url=getRequestUrl(content_id), headers=headers)
+    novelText = shapeNovelContent(resContent)
+
+    return novelText
+
+
+def getNovelFromNotion(content_id):
+    title = getNotionContentTitle()
+    text = getNotionContentText(content_id)
+    return {'title': title, 'text': text}
+
+
+# ツイート関係
 def getArticleLength(article):
     return len(article)
 
@@ -48,41 +193,6 @@ def time2Read(length):
         return int(length/LETTERS_READ_IN_A_MIN)
 
 
-file = "elems_text.txt"
-
-
-def is_not_changed(old_elem, new_elem):
-    return old_elem == new_elem
-
-
-def set_old_elems():
-    try:
-        f = open(file)
-        old_elems = f.read()
-        print(f'{"old_elem":10} : {old_elems}')
-    except:
-        old_elems = ''
-    return old_elems
-
-
-def set_new_elems():
-    new_elems = getArticleKey()
-    print(f'{"new_elem":10} : {new_elems}')
-    return new_elems
-
-
-def is_newArticle_posted(old_elem, new_elem):
-    if not is_not_changed(old_elems, new_elems):
-        f = open(file, 'w')
-        f.writelines(new_elems)
-        f.close()
-        print("Change is detected!!")
-        return True
-    else:
-        print("not changed...")
-        return False
-
-
 def makeTweets(article):
     tw: list = []
     oneTweet: str = ''
@@ -91,12 +201,13 @@ def makeTweets(article):
     i: int = 0
 
     # スクレイピング結果を整形
-    title: str = article.title.split('｜')[0]
+    title: str = article['title'].split('｜')[0]
+    text: str = article['text']
 
     # 最初のツイートを作成
     tw.append(
-        f'胡乱なるウーロン茶\n@urouro_tk\nで公開しているショートショートの１つ、「{title}」です。\nnoteでも無料公開しています。\n{getArticleLengthForTweet(article.text)}字程ですのでおよそ{time2Read(getArticleLength(article.text))}分程で読めると思います。')
-    articleSentences: list = article.text.splitlines()
+        f'胡乱なるウーロン茶\n@urouro_tk\nで公開しているショートショートの１つ、「{title}」です。\nnoteでも無料公開しています。\n{getArticleLengthForTweet(text)}字程ですのでおよそ{time2Read(getArticleLength(text))}分程で読めると思います。')
+    articleSentences: list = article['text'].splitlines()
     articleSentences = [a for a in articleSentences if a != '']
     numArticleSentence: int = len(articleSentences)
 
@@ -149,23 +260,27 @@ def tweet(contents, articleLength):
 
 
 if __name__ == '__main__':
-    # try:
-    #     while True:
-    #         print("="*100)
-    #         new_elems = set_new_elems()
-    #         old_elems = set_old_elems()
-    #         if is_newArticle_posted(old_elems, new_elems):
-    #             article = getArticle()
-    #             articleLength = len(article.text)
-    #             tweets: list = makeTweets(article, articleLength)
-    #             tweet(tweets, articleLength)
-    #         time.sleep(40)
-    # except KeyboardInterrupt:
-    #     print("Interrupted by Ctrl + C")
-    article = getArticle()
-    tweets: list = makeTweets(article)
-    print(getArticleLengthForTweet(article.text))
-    for i in tweets:
-        print(i)
-        print(len(i))
-        print('-'*100)
+    notionOrNote = {'notion': False, 'note': False}  # notion, note変更通知用変数
+    old_ids = getOldIDs(notionOrNote)
+    notion_new_id = getNotionContentID()
+    note_new_id = getArticleKey()
+    print(f'note_new_id  {note_new_id}')
+
+    # note, notion のどちらが変更されたか判定
+    # notion のみが変更された場合
+    if notion_new_id != old_ids['notion'] and note_new_id == old_ids['note']:
+        notionOrNote['notion'] = True
+        updateOldID(notionOrNote, notion_new_id)
+        print('notion id is successfully updated')
+        # 小説を取得
+        novel = getNovelFromNotion(notion_new_id)
+
+    # note のみが変更された場合
+    elif notion_new_id == old_ids['notion'] and note_new_id != old_ids['note']:
+        notionOrNote['note'] = True
+        updateOldID(notionOrNote, note_new_id)
+        print('note id is successfully updated')
+        novel = getArticle()
+
+    else:
+        print('no change happend')
