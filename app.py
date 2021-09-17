@@ -1,30 +1,20 @@
-import sys
 from newspaper import Article
 import tweepy
 import requests
 import json
-from itertools import chain
 import os
-from os.path import dirname, join
-from dotenv import load_dotenv
 
-load_dotenv(".env", verbose=True)
-
-dotenv_path = join(dirname(__file__), '.env')
-load_dotenv(dotenv_path)
-
-API_KEY = os.environ.get("API_KEY")
-API_KEY_SECRET = os.environ.get("API_KEY_SECRET")
-BEARER_TOKEN = os.environ.get("BEARER_TOKEN")
-ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
-ACCESS_TOKEN_SECRET = os.environ.get("ACCESS_TOKEN_SECRET")
-NOTION_SECRET = os.environ.get("NOTION_SECRET")
-NOTION_REPOST_BLOCK_ID = os.environ.get("NOTION_REPOST_BLOCK_ID")
-DB_NOTE_ROW_ID = os.environ.get("DB_NOTE_ROW_ID")
-DB_NOTION_ROW_ID = os.environ.get("DB_NOTION_ROW_ID")
-
-isNote = True
-
+API_KEY = os.environ["API_KEY"]
+API_KEY_SECRET = os.environ["API_KEY_SECRET"]
+BEARER_TOKEN = os.environ["BEARER_TOKEN"]
+ACCESS_TOKEN = os.environ["ACCESS_TOKEN"]
+ACCESS_TOKEN_SECRET = os.environ["ACCESS_TOKEN_SECRET"]
+NOTION_SECRET = os.environ["NOTION_SECRET"]
+NOTION_REPOST_BLOCK_ID = os.environ["NOTION_REPOST_BLOCK_ID"]
+DB_NOTE_ROW_ID = os.environ["DB_NOTE_ROW_ID"]
+DB_NOTION_ROW_ID = os.environ["DB_NOTION_ROW_ID"]
+TEST_TWITTER_ACCESS_TOKEN = os.environ["TEST_TWITTER_ACCESS_TOKEN"]
+TEST_TWITTER_ACCESS_TOKEN_SECRET = os.environ["TEST_TWITTER_ACCESS_TOKEN_SECRET"]
 
 # note
 
@@ -106,13 +96,17 @@ def getOldIDs(notionOrNote):
 
 
 def isNotionOrNote(notionOrNote):
-    if notionOrNote['notion'] and not notionOrNote['note']:
-        return 'notion_old_id'
-    elif not notionOrNote['notion'] and notionOrNote['note']:
-        return 'note_old_id'
+    try:
+        if notionOrNote['notion'] and not notionOrNote['note']:
+            return 'notion_old_id'
+        elif not notionOrNote['notion'] and notionOrNote['note']:
+            return 'note_old_id'
+    except:
+        print('error')
 
 
 def updateOldID(notionOrNote, new_id):
+    print('notion dbのid更新が呼ばれた')
     notion_api_key = NOTION_SECRET
     headers = {"Authorization": f"Bearer {notion_api_key}",
                "Content-Type": "application/json",
@@ -184,6 +178,7 @@ def getNotionContentText(content_id):
 
 
 def getNovelFromNotion(content_id):
+    print('notionのnovel取得関数が呼ばれた')
     title = getNotionContentTitle()
     text = getNotionContentText(content_id)
     print(text)
@@ -215,6 +210,7 @@ def time2Read(length):
 
 
 def makeTweets(article):
+    print('ツイート文作成関数が呼ばれた')
     tw: list = []
     oneTweet: str = ''
     sentencesInATweet: list = []
@@ -256,8 +252,9 @@ def makeTweets(article):
 
         # oneTweetに詰めすぎた分を取り除く作業
         sentencesInATweet = oneTweet.splitlines()
+        lengthOfSentenceList = len(sentencesInATweet)
         oneTweetLength = getArticleLength(sentencesInATweet)
-        while oneTweetLength > 140 - 1:
+        while oneTweetLength > 140 - lengthOfSentenceList:
             del sentencesInATweet[-1]
             removeCount += 1
             oneTweetLength = getArticleLength(sentencesInATweet)
@@ -271,6 +268,7 @@ def makeTweets(article):
 
 
 def tweet(contents, articleLength):
+    print('ツイート投稿関数が呼ばれた')
     # 取得した各種キーを格納
     consumer_key: str = API_KEY
     consumer_secret: str = API_KEY_SECRET
@@ -291,16 +289,18 @@ def tweet(contents, articleLength):
         print(i)
         print(len(i))
         print('-'*50)
-    # status = api.update_status(contents[0])
-    # for i in contents[1:]:
-    #     status = api.update_status(i, status.id_str)
+    status = api.update_status(contents[0])
+    for i in contents[1:]:
+        status = api.update_status(i, status.id_str)
 
 
-if __name__ == '__main__':
+def lambda_handler(event, content):
+    # if __name__ == '__main__':
     notionOrNote = {'notion': False, 'note': False}  # notion, note変更通知用変数
     old_ids = getOldIDs(notionOrNote)
     notion_new_id = getNotionContentID()
     note_new_id = getArticleKey()
+    print('----updated----')
     print(f'note_new_id  {note_new_id}')
 
     # note, notion のどちらが変更されたか判定
